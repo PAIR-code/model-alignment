@@ -11,14 +11,9 @@ authors = [
 description = "Model Alignment: Aligning prompts to human preferences through natural language feedback"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
   "google-generativeai>=0.3.0",
-  "jinja2",
-  "numpy",
-  "pandas",
-  "scikit-learn",
-  "tqdm"
 ]
 classifiers = [
   "Intended Audience :: Developers",
@@ -26,7 +21,6 @@ classifiers = [
   "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]

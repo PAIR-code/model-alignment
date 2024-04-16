@@ -30,19 +30,9 @@ class AlignableSingleRun():
 
   def __init__(
       self,
-      prompt_model: ModelHelper,
-      alignment_model: Optional[ModelHelper] = None,
+      helper: ModelHelper,
       data: Optional[ConstitutionalPrompt] = None):
-    """Constructs the alignable prompt object.
-
-    Args:
-      prompt_model: The ModelHelper that will be used to run the prompt.
-      alignment_model: The ModelHelper that will be used for aligning the
-          prompt. If none is provided, the prompt_model will be used.
-      data: Optional aligned prompt object to load an existing prompt from.
-    """
-    self.helper = AlignableModelCalls(
-        prompt_model, alignment_model if alignment_model else prompt_model)
+    self.helper = AlignableModelCalls(helper)
     self.current_convo_idx = 0
     if data:
       self.data = data
@@ -52,7 +42,7 @@ class AlignableSingleRun():
       self.data.principles = []
 
   def set_model_description(self, desc: str) -> None:
-    """Sets the model description which is the prompt to align."""
+    """Sets the model description which is the zero-shot prompt."""
     self.data.preamble = desc
     self.data.original_preamble = desc
 
@@ -92,7 +82,7 @@ class AlignableSingleRun():
     """Sends the user input to the single-run prompt.
 
     Args:
-      user_input: The argument for the prompt (e.g. a paragraph to be
+      user_input: The argument for the zero-shot prompt (e.g. a paragraph to be
       summarized)
       generate_multiple_candidates: If true then 3 model resposes are generated
         for the provided user message.
