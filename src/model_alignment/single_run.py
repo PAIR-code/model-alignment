@@ -1,0 +1,200 @@
+#  Copyright 2024 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or  implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+"""For creating, critiquing a single-run prompt (e.g. summarization)."""
+
+from typing import Optional, Sequence
+
+from model_alignment import alignable_model_calls
+from model_alignment import model_helper
+
+ConstitutionalPrompt = alignable_model_calls.ConstitutionalPrompt
+ConversationTurn = alignable_model_calls.ConversationTurn
+ModelHelper = model_helper.ModelHelper
+AlignableModelCalls = alignable_model_calls.AlignableModelCalls
+
+
+class AlignableSingleRun():
+  """Controls a single run prompt."""
+
+  def __init__(
+      self,
+      prompt_model: ModelHelper,
+      alignment_model: Optional[ModelHelper] = None,
+      data: Optional[ConstitutionalPrompt] = None):
+    """Constructs the alignable prompt object.
+
+    Args:
+      prompt_model: The ModelHelper that will be used to run the prompt.
+      alignment_model: The ModelHelper that will be used for aligning the
+          prompt. If none is provided, the prompt_model will be used.
+      data: Optional aligned prompt object to load an existing prompt from.
+    """
+    self.helper = AlignableModelCalls(
+        prompt_model, alignment_model if alignment_model else prompt_model)
+    self.current_convo_idx = 0
+    if data:
+      self.data = data
+    else:
+      self.data = ConstitutionalPrompt()
+    if self.data.principles is None:
+      self.data.principles = []
+
+  def set_model_description(self, desc: str) -> None:
+    """Sets the model description which is the prompt to align."""
+    self.data.preamble = desc
+    self.data.original_preamble = desc
+
+  def update_model_description_from_principles(self) -> str:
+    """Updates the agent's model descrption based off of the current principles.
+
+    Returns:
+      The updated model description.
+    """
+    self.data.preamble = self.data.original_preamble
+    for principle in self.data.principles:
+      self.data.preamble = self.helper.edit_single_run_model_description(
+          self.data.preamble, principle
+      )
+    return self.data.preamble
+
+  def set_input_output_pair(self, io_pair: Sequence[ConversationTurn]) -> None:
+    self.data.conversations[self.current_convo_idx] = io_pair
+
+  def get_model_description(self) -> str:
+    return self.data.preamble
+
+  def get_model_description_with_principles(self) -> str:
+    principles_str = ' '.join([
+        p for p in self.data.principles])
+    return self.data.preamble + ' ' + principles_str
+
+  def get_input_output_pair(self) -> Sequence[ConversationTurn]:
+    return self.data.conversations[self.current_convo_idx]
+
+  def send_input(
+      self,
+      user_input: Optional[dict[str, str]] = None,
+      generate_multiple_candidates: bool = False,
+      commit_model_response: bool = True,
+  ) -> Sequence[ConversationTurn] | ConversationTurn:
+    """Sends the user input to the single-run prompt.
+
+    Args:
+      user_input: The argument for the prompt (e.g. a paragraph to be
+      summarized)
+      generate_multiple_candidates: If true then 3 model resposes are generated
+        for the provided user message.
+      commit_model_response: If true then the model response is appended to
+        the stored conversation in the agent.
+
+    Returns: 
+      A single ConversationTurn with the model response or a list of them
+      depending on the provided arguments.
+    """
+    self.data.conversations.append([])
+    self.current_convo_idx = len(self.data.conversations) - 1
+    user_turn = ConversationTurn()
+    user_turn.is_user = True
+    user_turn.text = self.get_model_description().format(
+        **(user_input or {}))
+    if user_input:
+      for key, value in user_input.items():
+        user_turn.vars[key] = value
+    self.data.conversations[self.current_convo_idx].append(user_turn)
+    result = self.helper.single_run(
+        user_turn.text,
+        generate_multiple_candidates,
+    )
+    if commit_model_response:
+      self.commit_model_response(result)
+    return result
+
+  def commit_model_response(self, turn: ConversationTurn) -> None:
+    """Append the turn to the current conversation."""
+    self.data.conversations[self.current_convo_idx].append(turn)
+
+  def generate_critiques(self) -> list[str]:
+    """Generates a set of possible critiques of the single-run response.
+
+    Args:
+
+    Returns:
+      The critiques generated by this approach.
+    """
+    previous_turns = self.data.conversations[self.current_convo_idx]
+    return self.helper.generate_critiques_single_run(
+        self.data.preamble, previous_turns
+    )
+
+  def generate_kudos(self) -> list[str]:
+    """Generates a set of possible kudos of the single-run response.
+
+    Args:
+
+    Returns:
+      The kudos generated by this approach.
+    """
+    previous_turns = self.data.conversations[self.current_convo_idx]
+    return self.helper.generate_kudos_single_run(
+        self.data.preamble, previous_turns
+    )
+
+  def critique_response(self, critique: str) -> Sequence[str]:
+    """Updates the stored principles based off of a critique of the single-run.
+
+    Args:
+      critique: The critique to the model response.
+
+    Returns:
+      The updated principles list.
+    """
+    previous_turns = self.data.conversations[self.current_convo_idx]
+    new_principles = self.helper.run_mutation_single_run(
+        self.data.principles, previous_turns, self.get_model_description(),
+        critique, 'critique')
+    self.data.principles = new_principles
+    return self.data.principles
+
+  def kudos_response(self, kudos: str) -> Sequence[str]:
+    """Updates the stored principles based off of a kudos of the single-run.
+
+    Args:
+      kudos: The kudos of the model response.
+
+    Returns:
+      The updated principles list.
+    """
+    previous_turns = self.data.conversations[self.current_convo_idx]
+    new_principles = self.helper.run_mutation_single_run(
+        self.data.principles, previous_turns, self.get_model_description(),
+        kudos, 'kudos')
+    self.data.principles = new_principles
+    return self.data.principles
+
+  def rewrite_response(self, rewrite: str) -> Sequence[str]:
+    """Updates the stored principles based off of a rewrite of a model response.
+
+    Args:
+      rewrite: The rewrite of the model response.
+
+    Returns:
+      The updated principles list.
+    """
+    previous_turns = self.data.conversations[self.current_convo_idx]
+    new_principles = self.helper.run_mutation_single_run(
+        self.data.principles, previous_turns, self.get_model_description(),
+        rewrite, 'rewrite')
+    self.data.principles = new_principles
+    return self.data.principles

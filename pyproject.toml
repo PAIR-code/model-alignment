@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "model-alignment"
+version = "0.1"
+authors = [
+  { name="Google, LLC" }
+]
+description = "Model Alignment: Aligning prompts to human preferences through natural language feedback"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+  "google-generativeai>=0.3.0",
+  "jinja2",
+  "numpy",
+  "pandas",
+  "scikit-learn",
+  "tqdm"
+]
+classifiers = [
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = [
+  "explainable",
+  "explainable artifical intelligence",
+  "XAI",
+  "natural language processing",
+  "artifical intelligence",
+  "machine learning",
+  "deep learning",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/pair-code/model-alignment"
+"Repository" = "https://github.com/PAIR-code/model-alignment"
+"Bug Tracker" = "https://github.com/PAIR-code/model-alignment/issues"
