@@ -53,17 +53,19 @@ class ConstitutionalPrompt():
 class AlignableModelCalls():
   """Contains model calls for building an alignable agent."""
 
-  def __init__(self, helper: ModelHelper):
-    self.helper = helper
+  def __init__(self, prompt_model: ModelHelper, alignment_model: ModelHelper):
+    self.prompt_model = prompt_model
+    self.alignment_model = alignment_model
 
   def _call_model(
       self,
+      helper: ModelHelper,
       prompt: str,
       temperature: float,
       stop_sequences: Optional[list[str]] = None,
       candidate_count: int = 1,
   ):
-    return self.helper.predict(
+    return helper.predict(
         prompt=prompt,
         temperature=temperature,
         stop_sequences=stop_sequences,
@@ -93,7 +95,8 @@ class AlignableModelCalls():
         rewrite=rewrite,
     )
     principle = cast(str, self._call_model(
-        prompt=prompt, temperature=LOWEST_TEMP, stop_sequences=['}']
+        self.alignment_model, prompt=prompt, temperature=LOWEST_TEMP,
+        stop_sequences=['}']
     ))
     return principle
 
@@ -113,8 +116,11 @@ class AlignableModelCalls():
         critique=critique,
     )
     principle = cast(str, self._call_model(
-        prompt=prompt, temperature=LOWEST_TEMP, stop_sequences=['}']
+        self.alignment_model, prompt=prompt, temperature=LOWEST_TEMP,
+        stop_sequences=['}']
     ))
+    # Strip out the prefix if it exists in the model response.
+    principle = principle.removeprefix('INSTRUCTION_ADDITION: {')
     return principle
 
   def kudos_to_principle_single_run(
@@ -133,7 +139,8 @@ class AlignableModelCalls():
         kudos=kudos,
     )
     principle = cast(str, self._call_model(
-        prompt=prompt, temperature=LOWEST_TEMP, stop_sequences=['}']
+        self.alignment_model, prompt=prompt, temperature=LOWEST_TEMP,
+        stop_sequences=['}']
     ))
     return principle
 
@@ -145,6 +152,7 @@ class AlignableModelCalls():
     """Run a single-run prompt based on the input text."""
     num_candidates = 3 if generate_multiple_candidates else 1
     result = self._call_model(
+        self.prompt_model,
         prompt=single_run_prompt,
         temperature=MEDIUM_TEMP,
         candidate_count=num_candidates,
@@ -182,6 +190,7 @@ class AlignableModelCalls():
         instructions=preamble, vars=vars_string, result=convo[1].text
     )
     model_response = cast(str, self._call_model(
+        self.alignment_model,
         prompt=prompt,
         temperature=LOWEST_TEMP,
         stop_sequences=['CONVERSATION_CONTEXT:'],
@@ -206,6 +215,7 @@ class AlignableModelCalls():
         instructions=preamble, vars=vars_string, result=convo[1].text
     )
     model_response = cast(str, self._call_model(
+        self.alignment_model,
         prompt=prompt,
         temperature=LOWEST_TEMP,
         stop_sequences=['CONVERSATION_CONTEXT:'],
@@ -231,6 +241,7 @@ class AlignableModelCalls():
     response = cast(
         str,
         self._call_model(
+            self.alignment_model,
             prompt=prompt,
             temperature=LOW_TEMP,
             stop_sequences=['<END_PROMPT>']))
@@ -308,7 +319,8 @@ class AlignableModelCalls():
           response=convo[1].text,
           feedback=feedback,
           principle=principles[mutation['principle_idx']])
-      response = cast(str, self._call_model(prompt, LOWEST_TEMP))
+      response = cast(str, self._call_model(
+          self.alignment_model, prompt, LOWEST_TEMP))
       end_tag_idx = response.find(prompts.END_PRINCIPLE_TAG)
       if end_tag_idx != -1:
         response = response[:end_tag_idx]
@@ -324,7 +336,7 @@ class AlignableModelCalls():
     principles = list(principles)
     prompt, mutations = self.create_mutation_decision_prompt_single_run(
         principles, convo, model_description, feedback, feedback_type)
-    response = self._call_model(prompt, LOWEST_TEMP)
+    response = self._call_model(self.alignment_model, prompt, LOWEST_TEMP)
 
     # Subtract one from the response number as the mutations list is 0-based
     # but the prompt used is 1-based for better LLM performance.
@@ -338,3 +350,19 @@ class AlignableModelCalls():
     # Perform the appropriate mutation.
     return self.perform_mutation_single_run(
         principles, convo, model_description, feedback, feedback_type, mutation)
+
+  def update_model_description_from_feedback_single_run(
+      self, model_description: str, feedback: str) -> str:
+    """Update the model description directly based on feedback."""
+    prompt = prompts.MASTER_UPDATE_PROMPT.format(
+        model_prompt=model_description, feedback=feedback)
+    response = cast(
+        str, self._call_model(self.alignment_model, prompt, LOW_TEMP))
+    # Strip out any <PROMPT> or <REVISED PROMPT> opening and closing tags.
+    split = re.split('<(?:REVISED )?PROMPT>', response)
+    if len(split) > 1:
+      response = split[1]
+    split = re.split('</(?:REVISED )?PROMPT>', response)
+    if len(split) > 1:
+      response = split[0]
+    return response.strip()
