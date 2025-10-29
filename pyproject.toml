@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "model-alignment"
-version = "0.2"
+version = "0.3"
 authors = [
   { name="Google, LLC" }
 ]
@@ -13,7 +13,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
 dependencies = [
-  "google-generativeai>=0.3.0",
+  "google-genai",
   "jinja2",
   "keras>=3.0.0",
   "keras-nlp",

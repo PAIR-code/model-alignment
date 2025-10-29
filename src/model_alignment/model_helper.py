@@ -18,7 +18,9 @@ import abc
 import time
 from typing import Optional, Union
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
+
 import keras_nlp
 
 MAX_NUM_RETRIES = 10
@@ -41,9 +43,10 @@ class ModelHelper(abc.ABC):
 class GeminiModelHelper(ModelHelper):
   """Gemini model calls."""
 
-  def __init__(self, api_key, model_name='gemini-pro'):
+  def __init__(self, api_key, model_name='gemini-2.5-pro'):
     self.api_key = api_key
-    self.model = genai.GenerativeModel(model_name)
+    self.model_name = model_name
+    self.client = genai.Client(api_key=self.api_key)
 
   def predict(
       self,
@@ -55,25 +58,40 @@ class GeminiModelHelper(ModelHelper):
   ) -> Union[list[str], str]:
     num_attempts = 0
     response = None
-    genai.configure(api_key=self.api_key)
-    generation_config = genai.types.GenerationConfig(
-        candidate_count=candidate_count,
-        stop_sequences=stop_sequences,
-        temperature=temperature,
+    
+    generation_config = types.GenerateContentConfig(
+      candidate_count=candidate_count,
+      max_output_tokens=max_output_tokens,
+      temperature=temperature,
+      stop_sequences=stop_sequences,
+      safety_settings=[
+        types.SafetySetting(
+            category="HARM_CATEGORY_HARASSMENT",
+            threshold="BLOCK_NONE",
+        ),
+        types.SafetySetting(
+            category="HARM_CATEGORY_HATE_SPEECH",
+            threshold="BLOCK_NONE",
+        ),
+        types.SafetySetting(
+            category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            threshold="BLOCK_NONE",
+        ),
+        types.SafetySetting(
+            category="HARM_CATEGORY_DANGEROUS_CONTENT",
+            threshold="BLOCK_NONE",
+        ),
+      ],
     )
     if max_output_tokens is not None:
-      generation_config.max_output_tokens = max_output_tokens
+      generation_config["max_output_tokens"] = max_output_tokens
+
     while num_attempts < MAX_NUM_RETRIES and response is None:
       try:
-        response = self.model.generate_content(
-            prompt,
-            generation_config=generation_config,
-            safety_settings={
-                'HARASSMENT': 'block_none',
-                'SEXUAL': 'block_none',
-                'HATE_SPEECH': 'block_none',
-                'DANGEROUS': 'block_none',
-            },
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+            config=generation_config
         )
         num_attempts += 1
       except Exception as e:  # pylint: disable=broad-except
@@ -84,11 +102,20 @@ class GeminiModelHelper(ModelHelper):
     if response is None:
       raise ValueError('Failed to generate content.')
 
-    # Sometimes (eg if content is blocked) the returned candidates have no
-    # `parts`.
+    # Handle recitation policy blocks and other safety issues.
+    if not response.candidates:
+        if response.prompt_feedback.block_reason == 'SAFETY':
+            print('\033[31mResponse blocked due to safety settings.\033[0m')
+            return ''
+        # The recitation policy is a specific type of safety block.
+        if response.prompt_feedback.block_reason == 'RECITATION':
+            print('\033[31mResponse blocked due to recitation policy.\033[0m')
+            return ''
+        return ''
+
     texts = []
     for candidate in response.candidates:
-      if candidate.content.parts:
+      if candidate.content and candidate.content.parts:
         texts.append(candidate.content.parts[0].text)
 
     if not texts:
